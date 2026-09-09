@@ -116,6 +116,7 @@ UI["f"]["BottomRightRadius"] = UDim.new(0, 0)
 UI["f"]["TopRightRadius"] = UDim.new(0, 8)
 
 
+
 -- // StarterGui.Library.Main.Topbar.UIGradient \\ --
 UI["10"] = Instance.new("UIGradient", UI["c"])
 UI["10"]["Color"] = ColorSequence.new{ColorSequenceKeypoint.new(0.000, Color3.fromRGB(255, 121, 36)),ColorSequenceKeypoint.new(1.000, Color3.fromRGB(255, 35, 35))}
@@ -1025,7 +1026,7 @@ local script = UI["3a"]
 	_G.UIToggleKey = Enum.KeyCode.RightShift
 	_G.IsBinding = false
 	
-	local Root = UI["1"]
+	local Root = script.Parent
 	local Main = Root:WaitForChild("Main")
 	Main.Draggable = true
 	local Toggle = Root:WaitForChild("Toggle")
@@ -1113,6 +1114,63 @@ local script = UI["3a"]
 	
 	local ActiveColorPicker = nil
 	local draggingColor = false
+	local cpGui = Main:FindFirstChild("ColorPickerGui")
+	local updateBoxes = nil
+	
+	if cpGui then
+		cpGui.Visible = false
+		local pickerFrame = cpGui:FindFirstChild("Picker")
+		local closeBtn = cpGui:FindFirstChild("Close")
+		local textboxesFolder = cpGui:FindFirstChild("Content") and cpGui.Content:FindFirstChild("Textboxes")
+	
+		local rBox = textboxesFolder and textboxesFolder:FindFirstChild("R")
+		local gBox = textboxesFolder and textboxesFolder:FindFirstChild("G")
+		local bBox = textboxesFolder and textboxesFolder:FindFirstChild("B")
+	
+		updateBoxes = function(col)
+			if rBox then rBox.Text = tostring(math.floor(col.R * 255)) end
+			if gBox then gBox.Text = tostring(math.floor(col.G * 255)) end
+			if bBox then bBox.Text = tostring(math.floor(col.B * 255)) end
+		end
+	
+		local function startDragging(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				draggingColor = true
+			end
+		end
+	
+		if pickerFrame then
+			pickerFrame.InputBegan:Connect(startDragging)
+			for _, child in ipairs(pickerFrame:GetDescendants()) do
+				child.InputBegan:Connect(startDragging)
+			end
+		end
+	
+		if rBox and gBox and bBox then
+			local function applyBoxValues()
+				if not ActiveColorPicker then return end
+				local r = tonumber(rBox.Text) or 0
+				local g = tonumber(gBox.Text) or 0
+				local b = tonumber(bBox.Text) or 0
+				local newColor = Color3.fromRGB(math.clamp(r, 0, 255), math.clamp(g, 0, 255), math.clamp(b, 0, 255))
+				ActiveColorPicker.UpdateColor(newColor)
+			end
+			rBox.FocusLost:Connect(applyBoxValues)
+			gBox.FocusLost:Connect(applyBoxValues)
+			bBox.FocusLost:Connect(applyBoxValues)
+		end
+	
+		if closeBtn and closeBtn:IsA("TextButton") then
+			ApplyInteraction(closeBtn)
+			closeBtn.MouseButton1Click:Connect(function()
+				cpGui.Visible = false
+				if ActiveColorPicker and ActiveColorPicker.OnClose then
+					ActiveColorPicker.OnClose()
+				end
+				ActiveColorPicker = nil
+			end)
+		end
+	end
 	
 	UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -1122,19 +1180,21 @@ local script = UI["3a"]
 	
 	UserInputService.InputChanged:Connect(function(input)
 		if ActiveColorPicker and draggingColor and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			local pickerFrame = ActiveColorPicker.PickerFrame
-			local center = pickerFrame.AbsolutePosition + (pickerFrame.AbsoluteSize / 2)
-			local mousePos = Vector2.new(input.Position.X, input.Position.Y)
-			local distance = (mousePos - center).Magnitude
-			local radius = pickerFrame.AbsoluteSize.X / 2
-			if distance > radius then distance = radius end
-			local delta = mousePos - center
-			local angle = math.atan2(delta.Y, delta.X)
-			local hue = ((-angle - math.pi / 2) / (math.pi * 2)) % 1
-			local saturation = distance / radius
+			local pickerFrame = cpGui and cpGui:FindFirstChild("Picker")
+			if pickerFrame then
+				local center = pickerFrame.AbsolutePosition + (pickerFrame.AbsoluteSize / 2)
+				local mousePos = Vector2.new(input.Position.X, input.Position.Y)
+				local distance = (mousePos - center).Magnitude
+				local radius = pickerFrame.AbsoluteSize.X / 2
+				if distance > radius then distance = radius end
+				local delta = mousePos - center
+				local angle = math.atan2(delta.Y, delta.X)
+				local hue = ((-angle - math.pi / 2) / (math.pi * 2)) % 1
+				local saturation = distance / radius
 	
-			local newColor = Color3.fromHSV(hue, saturation, 1)
-			ActiveColorPicker.UpdateColor(newColor)
+				local newColor = Color3.fromHSV(hue, saturation, 1)
+				ActiveColorPicker.UpdateColor(newColor)
+			end
 		end
 	end)
 	
@@ -1352,8 +1412,6 @@ local script = UI["3a"]
 			element.Name = elemId
 			element.LayoutOrder = (elemConfig.LayoutOrder or 0) + 2
 			element.Parent = scrollContainer
-	
-	
 			element.Visible = true
 	
 			local label = element:FindFirstChild("TextLabel") or element
@@ -1560,6 +1618,7 @@ local script = UI["3a"]
 						if elemConfig.Callback then elemConfig.Callback() end
 					end)
 				end
+	
 			elseif elemType == "ColorPicker" then
 				local baseOrder = (elemConfig.LayoutOrder or 0) + 2
 				element.Name = elemId
@@ -1575,95 +1634,46 @@ local script = UI["3a"]
 				local colorBtn = element:FindFirstChildWhichIsA("TextButton")
 				local currentColor = elemConfig.Default or Color3.fromRGB(255, 255, 255)
 	
-				local cpGui = Main:FindFirstChild("ColorPickerGui")
-				if cpGui then
-					cpGui.Visible = false
-					local pickerFrame = cpGui:FindFirstChild("Picker")
-					local closeBtn = cpGui:FindFirstChild("Close")
-					local textboxesFolder = cpGui:FindFirstChild("Content") and cpGui.Content:FindFirstChild("Textboxes")
-	
-					local rBox = textboxesFolder and textboxesFolder:FindFirstChild("R")
-					local gBox = textboxesFolder and textboxesFolder:FindFirstChild("G")
-					local bBox = textboxesFolder and textboxesFolder:FindFirstChild("B")
-	
-					local function updateBoxes(col)
-						if rBox then rBox.Text = tostring(math.floor(col.R * 255)) end
-						if gBox then gBox.Text = tostring(math.floor(col.G * 255)) end
-						if bBox then bBox.Text = tostring(math.floor(col.B * 255)) end
-					end
-	
-					local pickerData = {
-						PickerFrame = pickerFrame,
-						UpdateColor = function(col)
-							currentColor = col
-							if colorBtn then colorBtn.BackgroundColor3 = currentColor end
-							updateBoxes(currentColor)
-						end
-					}
-	
-					if colorBtn then
-						ApplyInteraction(colorBtn)
-						colorBtn.BackgroundColor3 = currentColor
-						colorBtn.MouseButton1Click:Connect(function()
-							cpGui.Visible = true
-							ActiveColorPicker = pickerData
-							updateBoxes(currentColor)
-						end)
-					end
-	
-					if pickerFrame then
-						local function startDragging(input)
-							if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-								draggingColor = true
-								ActiveColorPicker = pickerData
-							end
-						end
-	
-						pickerFrame.InputBegan:Connect(startDragging)
-						for _, child in ipairs(pickerFrame:GetDescendants()) do
-							child.InputBegan:Connect(startDragging)
-						end
-					end
-	
-					if rBox and gBox and bBox then
-						local function applyBoxValues()
-							local r = tonumber(rBox.Text) or 0
-							local g = tonumber(gBox.Text) or 0
-							local b = tonumber(bBox.Text) or 0
-							currentColor = Color3.fromRGB(math.clamp(r, 0, 255), math.clamp(g, 0, 255), math.clamp(b, 0, 255))
-							if colorBtn then colorBtn.BackgroundColor3 = currentColor end
-						end
-						rBox.FocusLost:Connect(applyBoxValues)
-						gBox.FocusLost:Connect(applyBoxValues)
-						bBox.FocusLost:Connect(applyBoxValues)
-					end
-	
-					if closeBtn then
-						if closeBtn:IsA("TextButton") then
-							ApplyInteraction(closeBtn)
-							closeBtn.MouseButton1Click:Connect(function()
-								cpGui.Visible = false
-								ActiveColorPicker = nil
-								if elemConfig.Callback then
-									elemConfig.Callback(currentColor)
-								end
-							end)
-						end
-					end
+				local function setColor(col)
+					currentColor = col
+					if colorBtn then colorBtn.BackgroundColor3 = currentColor end
+					if elemConfig.Callback then elemConfig.Callback(currentColor) end
 				end
+	
+				if colorBtn then
+					ApplyInteraction(colorBtn)
+					colorBtn.BackgroundColor3 = currentColor
+					colorBtn.MouseButton1Click:Connect(function()
+						if cpGui then
+							cpGui.Visible = true
+							ActiveColorPicker = {
+								UpdateColor = function(col)
+									setColor(col)
+									if updateBoxes then updateBoxes(col) end
+								end,
+								OnClose = function()
+									if elemConfig.Callback then
+										elemConfig.Callback(currentColor)
+									end
+								end
+							}
+							if updateBoxes then updateBoxes(currentColor) end
+						end
+					end)
+				end
+	
 				if _G.Registry then
 					_G.Registry[regId] = {
 						Get = function() return currentColor end,
 						Set = function(v) 
 							if typeof(v) == "Color3" then
-								currentColor = v
-								if colorBtn then colorBtn.BackgroundColor3 = currentColor end
-								if elemConfig.Callback then elemConfig.Callback(currentColor) end
+								setColor(v)
 							end
 						end
 					}
 				end
 			end
+	
 			return element
 		end
 	
@@ -1724,8 +1734,6 @@ local script = UI["3a"]
 			LoadConfig(res)
 		end
 	end)
-	--------------------
-	 	
 end
 task.spawn(SCRIPT_3a)
 
